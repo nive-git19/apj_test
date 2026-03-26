@@ -1228,36 +1228,16 @@ Customer requesting agent assistance.`;
 
 // ─── RETURN TO CHAT ──────────────────────────────────────
 function returnToChat() {
-  // The quote page runs inside Freshchat's widget webview (iframe).
-  // We can't programmatically close the webview from inside it.
-  // Best UX: replace page content with clear instructions.
+  // Seamless return — like Razorpay after payment success.
+  // The Freshchat widget loaded this URL inside its webview,
+  // so history.back() should snap back to the conversation.
+  window.history.back();
 
-  // Try postMessage to parent in case Freshchat handles it
-  try {
-    window.parent.postMessage({ type: 'apj_close_quote' }, '*');
-  } catch(e) {}
-
-  // Replace the entire page with a clean "done" screen
-  document.body.innerHTML = `
-    <div style="
-      min-height:100vh; display:flex; flex-direction:column;
-      align-items:center; justify-content:center; padding:30px;
-      background:#0D0F1A; color:#fff; font-family:'DM Sans',sans-serif;
-      text-align:center;
-    ">
-      <div style="font-size:48px; margin-bottom:16px;">✅</div>
-      <div style="font-size:18px; font-weight:700; color:#E8A020; margin-bottom:12px;">
-        You're All Set!
-      </div>
-      <div style="font-size:13px; color:#aaa; line-height:1.7; max-width:280px;">
-        Close this chat window using the <strong style="color:#fff;">✕ button</strong> at the top,
-        then reopen the chat to speak with an agent.
-      </div>
-      <div style="margin-top:24px; font-size:11px; color:#555;">
-        Your booking summary has been sent to our team.
-      </div>
-    </div>
-  `;
+  // If history.back() doesn't work (no history entry),
+  // try closing the window after a short delay
+  setTimeout(() => {
+    try { window.close(); } catch(e) {}
+  }, 300);
 }
 
 // ─── TALK TO AGENT ───────────────────────────────────────
@@ -1306,10 +1286,13 @@ async function talkToAgent() {
 
   // Success — summary actually reached the agent
   if (sent) {
-    document.getElementById('statusOk').style.display     = 'block';
-    document.getElementById('returnCard').style.display   = 'block';
     document.getElementById('quoteActions').style.display = 'none';
+    document.getElementById('statusOk').textContent = '✅ Booking summary sent!';
+    document.getElementById('statusOk').style.display = 'block';
     console.log('✅ Full flow complete — summary in agent inbox');
+
+    // Seamless auto-return after 1.5s — like a payment confirmation
+    setTimeout(() => returnToChat(), 1500);
     return;
   }
 
