@@ -799,8 +799,9 @@ body {
       Please <strong style="color:#fff;">close this tab</strong> and return to the chat window to speak with our agent.
     </div>
     <br>
-    <button class="btn btn-gold" onclick="window.close()" style="max-width:180px;margin:0 auto;font-size:13px;">
-      Close & Return to Chat
+    <button class="btn btn-gold" id="closeBtn" onclick="returnToChat()"
+      style="max-width:180px;margin:0 auto;font-size:13px;">
+      Return to Chat →
     </button>
   </div>
 
@@ -818,6 +819,7 @@ body {
 <script>
 // ─── CONFIG ──────────────────────────────────────────────
 const BACKEND = 'https://apjcabs-bridge.onrender.com';
+const WIX_URL = 'https://www.apjcabs.com'; // ← UPDATE to your actual Wix URL
 
 // ─── VEHICLE MASTER ──────────────────────────────────────
 // (placeholder images — replace with real APJ fleet photos)
@@ -896,6 +898,8 @@ const S = {
 // ─── INIT ────────────────────────────────────────────────
 window.addEventListener('load', function() {
   const p = new URLSearchParams(window.location.search);
+  S.name  = p.get('name')  || '';
+  S.phone = p.get('phone') || '';
   S.convId = p.get('conversation_id') || null;
 
   // Pre-fill from bot URL params
@@ -926,15 +930,22 @@ async function fetchConvId() {
   try {
     const r = await fetch(BACKEND + '/get-conv-id');
     const d = await r.json();
-    if (d.conversation_id) {
+    if (d.found && d.conversation_id) {
       S.convId = d.conversation_id;
       document.getElementById('headerConvStatus').textContent = 'SESSION ●';
       document.getElementById('headerConvStatus').style.color = '#4caf7d';
+      console.log('Conv ID ready:', S.convId);
     } else {
-      document.getElementById('headerConvStatus').textContent = 'OFFLINE ○';
+      // Render may be waking up — retry in 3 seconds
+      document.getElementById('headerConvStatus').textContent = 'CONNECTING...';
+      document.getElementById('headerConvStatus').style.color = '#f5a623';
+      setTimeout(fetchConvId, 3000);
     }
   } catch(e) {
-    document.getElementById('headerConvStatus').textContent = 'OFFLINE ○';
+    // Network error — retry in 3 seconds
+    document.getElementById('headerConvStatus').textContent = 'CONNECTING...';
+    document.getElementById('headerConvStatus').style.color = '#f5a623';
+    setTimeout(fetchConvId, 3000);
   }
 }
 
@@ -1180,67 +1191,97 @@ function buildQuote() {
   goTo(4);
 }
 
-// ─── TALK TO AGENT ───────────────────────────────────────
-async function talkToAgent() {
+// ─── BUILD SUMMARY ───────────────────────────────────────
+function buildSummary() {
   const v   = S.vehicle;
   const pkg = S.pkg;
-  const btn = document.getElementById('agentBtn');
-
-  btn.disabled    = true;
-  btn.textContent = 'Sending...';
-  document.getElementById('statusErr').style.display = 'none';
-
-  const summary =
-`🚖 APJ CABS — BOOKING SUMMARY
+  return `🚖 APJ CABS — BOOKING SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 Name       : ${S.name  || 'Not provided'}
-📞 Mobile     : ${S.phone || 'Not provided'}
-📅 Date       : ${S.date} ${S.time ? '@ '+S.time : ''}
-🏙️ Trip Type  : ${S.tripType}${S.days>1?' ('+S.days+' days)':''}
-🚦 Drop Type  : ${S.dropType.replace('_',' ')}
+📅 Date       : ${S.date}${S.time ? ' @ ' + S.time : ''}
+🏙️ Trip Type  : ${S.tripType}${S.days > 1 ? ' (' + S.days + ' days)' : ''}
+🚦 Drop Type  : ${S.dropType.replace('_', ' ')}
 📍 Pickup     : ${S.pickup}
 📍 Drop       : ${S.drop}
 👥 Passengers : ${S.pax}
 🧳 Large Bags : ${S.bags}
-🚗 Vehicle    : ${v ? v.name+' ('+v.config+')' : '—'}
-📦 Package    : ${pkg ? pkg.label||'Outstation Per KM' : '—'}
+🚗 Vehicle    : ${v ? v.name + ' (' + v.config + ')' : '—'}
+📦 Package    : ${pkg ? (pkg.label || 'Outstation Per KM') : '—'}
 📏 Distance   : ${S.dist} KM (Garage to Garage)
-💰 Fare Estimate : ₹${S.fare.toLocaleString('en-IN')} (incl. GST 18%)
+💰 Fare       : ₹${S.fare.toLocaleString('en-IN')} (incl. GST 18%)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️  Toll, parking & interstate permits are additional.
-Customer is requesting agent assistance.`;
+Toll, parking & interstate permits additional.
+Customer requesting agent assistance.`;
+}
 
+// ─── RETURN TO CHAT ──────────────────────────────────────
+function returnToChat() {
+  // Try window.close() first (works if opened via JS)
+  window.close();
+  // If blocked, redirect to Wix site after 500ms
+  setTimeout(function() {
+    window.location.href = WIX_URL;
+  }, 500);
+}
+
+// ─── TALK TO AGENT ───────────────────────────────────────
+async function talkToAgent() {
+  const btn = document.getElementById('agentBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Sending...';
+  document.getElementById('statusErr').style.display = 'none';
+
+  // Re-fetch conv_id right now in case it wasn't ready on page load
+  if (!S.convId) {
+    try {
+      const r = await fetch(BACKEND + '/get-conv-id');
+      const d = await r.json();
+      if (d.found && d.conversation_id) {
+        S.convId = d.conversation_id;
+        console.log('Conv ID fetched on agent click:', S.convId);
+      }
+    } catch(e) {
+      console.log('Could not fetch conv_id on click:', e.message);
+    }
+  }
+
+  const summary = buildSummary();
   let sent = false;
 
-  // Try backend API
+  // Method A — backend API with conv_id
   if (S.convId) {
     try {
-      const res  = await fetch(BACKEND + '/send-summary', {
+      const res = await fetch(BACKEND + '/send-summary', {
         method : 'POST',
-        headers: { 'Content-Type':'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body   : JSON.stringify({ conversation_id: S.convId, summary })
       });
       const data = await res.json();
-      if (res.ok && data.success) sent = true;
-    } catch(e) { console.error('Backend error:', e); }
+      if (res.ok && data.success) {
+        sent = true;
+        console.log('✅ Summary sent via API');
+      } else {
+        console.error('API error:', data);
+      }
+    } catch(e) {
+      console.error('Backend fetch error:', e.message);
+    }
   }
 
-  // Fallback — localStorage
+  // Method B — localStorage fallback
   if (!sent) {
     localStorage.setItem('apj_summary',         summary);
     localStorage.setItem('apj_agent_requested', 'true');
     sent = true;
+    console.log('Summary saved to localStorage as fallback');
   }
 
   if (sent) {
-    document.getElementById('statusOk').style.display      = 'block';
-    document.getElementById('returnCard').style.display     = 'block';
-    document.getElementById('quoteActions').style.display   = 'none';
-    // Try to auto-close after 5s
-    setTimeout(() => { try { window.close(); } catch(e){} }, 5000);
+    document.getElementById('statusOk').style.display     = 'block';
+    document.getElementById('returnCard').style.display   = 'block';
+    document.getElementById('quoteActions').style.display = 'none';
   } else {
-    document.getElementById('statusErr').textContent    = '❌ Could not send. Please try again.';
-    document.getElementById('statusErr').style.display  = 'block';
+    document.getElementById('statusErr').textContent   = '❌ Could not send. Please try again.';
+    document.getElementById('statusErr').style.display = 'block';
     btn.disabled    = false;
     btn.textContent = '🧑‍💼 Talk to Agent & Confirm Booking';
   }
