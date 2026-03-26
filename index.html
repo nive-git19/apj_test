@@ -796,12 +796,12 @@ body {
     <div class="return-title">Summary Sent Successfully!</div>
     <div class="return-sub">
       Your booking details have been shared with an APJ Cabs travel advisor.<br><br>
-      Click below to return to the chat window and speak with our agent.
+      Close this window and tap the <strong>chat icon</strong> 💬 to speak with our agent.
     </div>
     <br>
     <button class="btn btn-gold" id="closeBtn" onclick="returnToChat()"
-      style="max-width:200px;margin:0 auto;font-size:13px;">
-      ← Return to Chat
+      style="max-width:220px;margin:0 auto;font-size:13px;">
+      ✕ Close & Return to Chat
     </button>
   </div>
 
@@ -1228,9 +1228,30 @@ Customer requesting agent assistance.`;
 
 // ─── RETURN TO CHAT ──────────────────────────────────────
 function returnToChat() {
-  // Quote page opens inside Freshchat widget as webview
-  // history.back() closes the webview and returns to chat
-  window.history.back();
+  // The quote page runs inside Freshchat's widget webview (iframe).
+  // We try multiple approaches to get back to the chat:
+
+  // Method 1 — Tell Freshchat parent to close webview via postMessage
+  try {
+    window.parent.postMessage({ type: 'apj_close_quote' }, '*');
+  } catch(e) {}
+
+  // Method 2 — Navigate the iframe to about:blank to "close" it
+  // This removes the quote page from the webview
+  try {
+    window.location.href = 'about:blank';
+  } catch(e) {}
+
+  // Method 3 — If nothing else works after a short delay,
+  // update UI to guide the user
+  setTimeout(() => {
+    const btn = document.getElementById('closeBtn');
+    if (btn) {
+      btn.textContent = '💬 Tap the chat icon below to continue';
+      btn.style.pointerEvents = 'none';
+      btn.style.opacity = '0.7';
+    }
+  }, 500);
 }
 
 // ─── TALK TO AGENT ───────────────────────────────────────
@@ -1277,23 +1298,29 @@ async function talkToAgent() {
     }
   }
 
-  // Method B — localStorage fallback
-  if (!sent) {
-    localStorage.setItem('apj_summary',         summary);
-    localStorage.setItem('apj_agent_requested', 'true');
-    sent = true;
-    console.log('Summary saved to localStorage as fallback');
-  }
-
+  // Success — summary actually reached the agent
   if (sent) {
     document.getElementById('statusOk').style.display     = 'block';
     document.getElementById('returnCard').style.display   = 'block';
     document.getElementById('quoteActions').style.display = 'none';
-  } else {
-    document.getElementById('statusErr').textContent   = '❌ Could not send. Please try again.';
+    console.log('✅ Full flow complete — summary in agent inbox');
+    return;
+  }
+
+  // If API send failed — show error, don't fake success
+  if (!sent) {
+    console.log('❌ Summary could not be sent via API');
+    document.getElementById('statusErr').textContent = 
+      '⚠️ Could not send summary automatically. Please share your quote details with the agent in chat.';
     document.getElementById('statusErr').style.display = 'block';
-    btn.disabled    = false;
-    btn.textContent = '🧑‍💼 Talk to Agent & Confirm Booking';
+    // Still show return card so user can go back to chat
+    document.getElementById('returnCard').style.display   = 'block';
+    document.getElementById('quoteActions').style.display = 'none';
+    // Update return card messaging for manual flow
+    document.querySelector('.return-title').textContent = 'Return to Chat';
+    document.querySelector('.return-sub').innerHTML = 
+      'Please go back to the chat window and share your booking details with the agent.<br><br>' +
+      'Your fare estimate: <strong>₹' + S.fare.toLocaleString('en-IN') + '</strong>';
   }
 }
 </script>
