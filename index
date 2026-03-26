@@ -896,8 +896,6 @@ const S = {
 // ─── INIT ────────────────────────────────────────────────
 window.addEventListener('load', function() {
   const p = new URLSearchParams(window.location.search);
-  S.name  = p.get('name')  || '';
-  S.phone = p.get('phone') || '';
   S.convId = p.get('conversation_id') || null;
 
   // Pre-fill from bot URL params
