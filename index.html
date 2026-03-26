@@ -796,12 +796,12 @@ body {
     <div class="return-title">Summary Sent Successfully!</div>
     <div class="return-sub">
       Your booking details have been shared with an APJ Cabs travel advisor.<br><br>
-      Please <strong style="color:#fff;">close this tab</strong> and return to the chat window to speak with our agent.
+      Click below to return to the chat window and speak with our agent.
     </div>
     <br>
     <button class="btn btn-gold" id="closeBtn" onclick="returnToChat()"
-      style="max-width:180px;margin:0 auto;font-size:13px;">
-      Return to Chat →
+      style="max-width:200px;margin:0 auto;font-size:13px;">
+      ← Return to Chat
     </button>
   </div>
 
@@ -819,7 +819,6 @@ body {
 <script>
 // ─── CONFIG ──────────────────────────────────────────────
 const BACKEND = 'https://apjcabs-bridge.onrender.com';
-const WIX_URL = 'https://www.apjcabs.com'; // ← UPDATE to your actual Wix URL
 
 // ─── VEHICLE MASTER ──────────────────────────────────────
 // (placeholder images — replace with real APJ fleet photos)
@@ -928,23 +927,37 @@ window.addEventListener('load', function() {
 
 async function fetchConvId() {
   try {
-    const r = await fetch(BACKEND + '/get-conv-id');
-    const d = await r.json();
-    if (d.found && d.conversation_id) {
-      S.convId = d.conversation_id;
+    // Method 1 — from webhook store
+    const r1 = await fetch(BACKEND + '/get-conv-id');
+    const d1 = await r1.json();
+
+    if (d1.found && d1.conversation_id) {
+      S.convId = d1.conversation_id;
       document.getElementById('headerConvStatus').textContent = 'SESSION ●';
       document.getElementById('headerConvStatus').style.color = '#4caf7d';
-      console.log('Conv ID ready:', S.convId);
-    } else {
-      // Render may be waking up — retry in 3 seconds
-      document.getElementById('headerConvStatus').textContent = 'CONNECTING...';
-      document.getElementById('headerConvStatus').style.color = '#f5a623';
-      setTimeout(fetchConvId, 3000);
+      console.log('Conv ID from store:', S.convId);
+      return;
     }
-  } catch(e) {
-    // Network error — retry in 3 seconds
+
+    // Method 2 — fetch latest from Freshchat API directly
+    const r2 = await fetch(BACKEND + '/get-latest-conv');
+    const d2 = await r2.json();
+
+    if (d2.found && d2.conversation_id) {
+      S.convId = d2.conversation_id;
+      document.getElementById('headerConvStatus').textContent = 'SESSION ●';
+      document.getElementById('headerConvStatus').style.color = '#4caf7d';
+      console.log('Conv ID from API:', S.convId);
+      return;
+    }
+
+    // Still nothing — retry in 3 seconds (Render may be waking up)
     document.getElementById('headerConvStatus').textContent = 'CONNECTING...';
     document.getElementById('headerConvStatus').style.color = '#f5a623';
+    setTimeout(fetchConvId, 3000);
+
+  } catch(e) {
+    console.log('Retrying conv_id fetch...', e.message);
     setTimeout(fetchConvId, 3000);
   }
 }
@@ -1215,12 +1228,9 @@ Customer requesting agent assistance.`;
 
 // ─── RETURN TO CHAT ──────────────────────────────────────
 function returnToChat() {
-  // Try window.close() first (works if opened via JS)
-  window.close();
-  // If blocked, redirect to Wix site after 500ms
-  setTimeout(function() {
-    window.location.href = WIX_URL;
-  }, 500);
+  // Quote page opens inside Freshchat widget as webview
+  // history.back() closes the webview and returns to chat
+  window.history.back();
 }
 
 // ─── TALK TO AGENT ───────────────────────────────────────
